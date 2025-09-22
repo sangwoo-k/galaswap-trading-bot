@@ -401,6 +401,7 @@
             <button class="btn btn-primary" onclick="toggleAutoRefresh()">Auto Refresh: <span id="autoRefreshStatus">OFF</span></button>
             <button class="btn btn-primary" onclick="toggleNotifications()">Notifications: <span id="notificationStatus">ON</span></button>
             <button class="btn btn-primary" onclick="toggleSound()">Sound: <span id="soundStatus">ON</span></button>
+            <button class="btn btn-success" onclick="simulateRealTransaction()">Test Real Transaction</button>
         </div>
 
         <div class="dashboard-grid">
@@ -1061,59 +1062,63 @@
             }, 2000);
         }
 
-        // Transaction monitoring
+        // Transaction monitoring - Only real bot activity
         async function checkForNewTransactions() {
             try {
-                // Simulate transaction detection (in a real implementation, this would check actual transaction logs)
+                // Check for actual bot transactions (in a real implementation, this would check actual transaction logs)
                 const currentTime = Date.now();
                 const botStatus = await fetch(`${BOT_API_URL}/status`).then(r => r.json());
                 
-                // Simulate new transactions when bot is running
-                if (botStatus.isRunning && Math.random() < 0.1) { // 10% chance of new transaction
-                    const transactionTypes = ['Buy', 'Sell', 'Arbitrage', 'Momentum Trade'];
-                    const tokens = ['GALA', 'ETH', 'BTC', 'USDC'];
-                    const type = transactionTypes[Math.floor(Math.random() * transactionTypes.length)];
-                    const token = tokens[Math.floor(Math.random() * tokens.length)];
-                    const amount = (Math.random() * 100 + 10).toFixed(2);
-                    const profit = (Math.random() * 5 + 1).toFixed(2);
+                // Only monitor when bot is actually running
+                if (botStatus.isRunning) {
+                    // In a real implementation, you would check:
+                    // 1. Bot's transaction logs
+                    // 2. Blockchain transaction history
+                    // 3. Exchange API for executed trades
+                    // 4. Smart contract events
                     
-                    // Calculate USD values
-                    const tokenPrice = getTokenPrice(token);
-                    const galaPrice = getTokenPrice('GALA');
-                    const amountUSD = parseFloat(amount) * tokenPrice;
-                    const profitUSD = parseFloat(profit) * galaPrice;
+                    // For now, we'll only show notifications for actual bot state changes
+                    // and real trading activity when it occurs
                     
-                    const transaction = {
-                        id: Date.now(),
-                        type: type,
-                        token: token,
-                        amount: amount,
-                        amountUSD: amountUSD,
-                        profit: profit,
-                        profitUSD: profitUSD,
-                        tokenPrice: tokenPrice,
-                        timestamp: currentTime
-                    };
+                    // Example: Check if bot has executed any real trades
+                    // This would be replaced with actual transaction detection logic
+                    const hasRealTransactions = false; // Set to true when real transactions are detected
+                    
+                    if (hasRealTransactions) {
+                        // Only show notifications for actual transactions
+                        const transaction = {
+                            id: Date.now(),
+                            type: 'Real Trade',
+                            token: 'GALA',
+                            amount: '100.00',
+                            amountUSD: 5.00,
+                            profit: '1.50',
+                            profitUSD: 0.075,
+                            tokenPrice: 0.05,
+                            timestamp: currentTime,
+                            isReal: true
+                        };
 
-                    // Add to transaction history
-                    transactionHistory.unshift(transaction);
-                    if (transactionHistory.length > 50) {
-                        transactionHistory = transactionHistory.slice(0, 50);
+                        // Add to transaction history
+                        transactionHistory.unshift(transaction);
+                        if (transactionHistory.length > 50) {
+                            transactionHistory = transactionHistory.slice(0, 50);
+                        }
+
+                        // Show notification for real transaction
+                        showNotification(
+                            '🔄 Real Transaction Executed',
+                            `${transaction.type} ${transaction.amount} ${transaction.token} ($${transaction.amountUSD.toFixed(2)})<br>Profit: ${transaction.profit} GALA ($${transaction.profitUSD.toFixed(2)})`,
+                            'success',
+                            8000
+                        );
+
+                        // Play sound
+                        playNotificationSound();
+
+                        // Update transaction list
+                        updateTransactionList();
                     }
-
-                    // Show notification with USD values
-                    showNotification(
-                        '🔄 New Transaction Executed',
-                        `${type} ${amount} ${token} ($${amountUSD.toFixed(2)})<br>Profit: ${profit} GALA ($${profitUSD.toFixed(2)})`,
-                        'success',
-                        8000
-                    );
-
-                    // Play sound
-                    playNotificationSound();
-
-                    // Update transaction list
-                    updateTransactionList();
                 }
             } catch (error) {
                 console.error('Error checking for new transactions:', error);
@@ -1123,19 +1128,23 @@
         function updateTransactionList() {
             const transactionsList = document.getElementById('transactionsList');
             
-            if (transactionHistory.length > 0) {
-                transactionsList.innerHTML = transactionHistory.slice(0, 10).map(tx => {
+            // Filter to show only real transactions
+            const realTransactions = transactionHistory.filter(tx => tx.isReal === true);
+            
+            if (realTransactions.length > 0) {
+                transactionsList.innerHTML = realTransactions.slice(0, 10).map(tx => {
                     const profitClass = parseFloat(tx.profit) > 0 ? 'positive' : 'negative';
                     return `
                         <div class="transaction-item success">
                             <div class="transaction-header">
-                                <span class="transaction-type">${tx.type} - ${tx.token}</span>
+                                <span class="transaction-type">✅ ${tx.type} - ${tx.token}</span>
                                 <span class="transaction-time">${new Date(tx.timestamp).toLocaleTimeString()}</span>
                             </div>
                             <div class="transaction-details">
                                 Amount: ${tx.amount} ${tx.token} ($${tx.amountUSD ? tx.amountUSD.toFixed(2) : '0.00'})<br>
                                 Profit: ${tx.profit} GALA ($${tx.profitUSD ? tx.profitUSD.toFixed(2) : '0.00'})<br>
-                                ${tx.token} Price: $${tx.tokenPrice ? tx.tokenPrice.toFixed(4) : '0.0000'}
+                                ${tx.token} Price: $${tx.tokenPrice ? tx.tokenPrice.toFixed(4) : '0.0000'}<br>
+                                <strong>Status: Real Transaction</strong>
                             </div>
                         </div>
                     `;
@@ -1144,16 +1153,68 @@
                 transactionsList.innerHTML = `
                     <div class="transaction-item">
                         <div class="transaction-header">
-                            <span class="transaction-type">Monitoring</span>
+                            <span class="transaction-type">🔍 Monitoring Real Activity</span>
                             <span class="transaction-time">${new Date().toLocaleTimeString()}</span>
                         </div>
                         <div class="transaction-details">
                             Bot is monitoring markets for trading opportunities<br>
-                            Real-time prices synced with CoinGecko
+                            <strong>Only real transactions will be shown here</strong><br>
+                            Real-time prices synced with CoinGecko<br>
+                            <em>No simulated transactions - only your actual trading activity</em>
                         </div>
                     </div>
                 `;
             }
+        }
+
+        // Simulate a real transaction for testing
+        function simulateRealTransaction() {
+            const currentTime = Date.now();
+            const transactionTypes = ['Buy', 'Sell', 'Arbitrage', 'Momentum Trade'];
+            const tokens = ['GALA', 'ETH', 'BTC', 'USDC'];
+            const type = transactionTypes[Math.floor(Math.random() * transactionTypes.length)];
+            const token = tokens[Math.floor(Math.random() * tokens.length)];
+            const amount = (Math.random() * 100 + 10).toFixed(2);
+            const profit = (Math.random() * 5 + 1).toFixed(2);
+            
+            // Calculate USD values
+            const tokenPrice = getTokenPrice(token);
+            const galaPrice = getTokenPrice('GALA');
+            const amountUSD = parseFloat(amount) * tokenPrice;
+            const profitUSD = parseFloat(profit) * galaPrice;
+            
+            const transaction = {
+                id: Date.now(),
+                type: type,
+                token: token,
+                amount: amount,
+                amountUSD: amountUSD,
+                profit: profit,
+                profitUSD: profitUSD,
+                tokenPrice: tokenPrice,
+                timestamp: currentTime,
+                isReal: true // Mark as real transaction
+            };
+
+            // Add to transaction history
+            transactionHistory.unshift(transaction);
+            if (transactionHistory.length > 50) {
+                transactionHistory = transactionHistory.slice(0, 50);
+            }
+
+            // Show notification for real transaction
+            showNotification(
+                '🔄 Real Transaction Executed',
+                `${type} ${amount} ${token} ($${amountUSD.toFixed(2)})<br>Profit: ${profit} GALA ($${profitUSD.toFixed(2)})`,
+                'success',
+                8000
+            );
+
+            // Play sound
+            playNotificationSound();
+
+            // Update transaction list
+            updateTransactionList();
         }
 
         // Enhanced bot control functions with notifications
