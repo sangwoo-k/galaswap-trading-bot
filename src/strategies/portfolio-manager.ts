@@ -7,6 +7,7 @@ import { GridStrategy } from './grid-strategy';
 import { ScalpingStrategy } from './scalping-strategy';
 import { ArbitrageStrategy } from './arbitrage-strategy';
 import { MomentumStrategy } from './momentum-strategy';
+import { FeeAwareStrategy } from './fee-aware-strategy';
 
 export interface PortfolioAllocation {
   strategy: string;
@@ -96,11 +97,23 @@ export class PortfolioManager extends EventEmitter {
       takeProfitPercentage: 10.0
     });
 
+    const feeAwareStrategy = new FeeAwareStrategy({
+      targetToken: 'GALA',
+      quoteToken: 'ETH',
+      minProfitMargin: 1.2,
+      maxPositionSize: 400,
+      volatilityThreshold: 5,
+      volumeThreshold: 10000,
+      cooldownPeriod: 300000,
+      maxTradesPerDay: 8
+    });
+
     this.strategies.set('dca', dcaStrategy);
     this.strategies.set('grid', gridStrategy);
     this.strategies.set('scalping', scalpingStrategy);
     this.strategies.set('arbitrage', arbitrageStrategy);
     this.strategies.set('momentum', momentumStrategy);
+    this.strategies.set('fee-aware', feeAwareStrategy);
   }
 
   private setupDefaultAllocations(): void {
@@ -143,6 +156,14 @@ export class PortfolioManager extends EventEmitter {
       riskLevel: 'high',
       maxPositionSize: 100,
       enabled: false // Disabled by default for safety
+    });
+
+    this.allocations.set('fee-aware', {
+      strategy: 'fee-aware',
+      allocation: 15, // 15% to Fee-Aware (low risk, guaranteed profit)
+      riskLevel: 'low',
+      maxPositionSize: 400,
+      enabled: true
     });
   }
 

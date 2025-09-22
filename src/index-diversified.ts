@@ -9,6 +9,7 @@ import { errorHandler } from './utils/error-handler';
 import { securityManager } from './utils/security';
 import { portfolioManager } from './strategies/portfolio-manager';
 import { riskManager } from './utils/risk-manager';
+import { feeCalculator } from './utils/fee-calculator';
 
 class DiversifiedTradingBot {
   private app: express.Application;
@@ -174,6 +175,54 @@ class DiversifiedTradingBot {
           recommendations: riskMetrics.recommendations
         }
       });
+    });
+
+    // Fee monitoring endpoints
+    this.app.get('/fees', (req, res) => {
+      const feeStats = feeCalculator.getFeeStatistics();
+      res.json(feeStats);
+    });
+
+    this.app.get('/fees/validate', async (req, res) => {
+      try {
+        const { tokenIn, tokenOut, amountIn, expectedAmountOut, currentPrice } = req.query;
+        
+        if (!tokenIn || !tokenOut || !amountIn || !expectedAmountOut || !currentPrice) {
+          return res.status(400).json({ error: 'Missing required parameters' });
+        }
+
+        const validation = await feeCalculator.validateTransaction(
+          tokenIn as string,
+          tokenOut as string,
+          amountIn as string,
+          expectedAmountOut as string,
+          parseFloat(currentPrice as string)
+        );
+
+        res.json(validation);
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to validate transaction' });
+      }
+    });
+
+    this.app.get('/fees/minimum', async (req, res) => {
+      try {
+        const { tokenIn, tokenOut, currentPrice } = req.query;
+        
+        if (!tokenIn || !tokenOut || !currentPrice) {
+          return res.status(400).json({ error: 'Missing required parameters' });
+        }
+
+        const minimumAmount = await feeCalculator.calculateMinimumAmount(
+          tokenIn as string,
+          tokenOut as string,
+          parseFloat(currentPrice as string)
+        );
+
+        res.json(minimumAmount);
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to calculate minimum amount' });
+      }
     });
 
     // Performance analytics

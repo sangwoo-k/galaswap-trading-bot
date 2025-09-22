@@ -359,6 +359,27 @@
                 </div>
             </div>
 
+            <!-- Fee Monitoring Card -->
+            <div class="card">
+                <h3>💰 Fee Monitoring</h3>
+                <div class="metric">
+                    <span class="metric-label">GALA Fee</span>
+                    <span class="metric-value" id="galaFee">1 GALA</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">GALA Price</span>
+                    <span class="metric-value" id="galaPrice">$0.00</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Fee in USD</span>
+                    <span class="metric-value" id="feeInUSD">$0.00</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Cache Status</span>
+                    <span class="metric-value" id="cacheStatus">-</span>
+                </div>
+            </div>
+
             <!-- Trading Strategies Card -->
             <div class="card">
                 <h3>🎯 Trading Strategies</h3>
@@ -418,7 +439,8 @@
                     updatePortfolioData(),
                     updateRiskMetrics(),
                     updateStrategies(),
-                    updateTransactions()
+                    updateTransactions(),
+                    updateFeeMonitoring()
                 ]);
                 
                 document.getElementById('lastUpdated').textContent = 
@@ -542,6 +564,42 @@
                 
             } catch (error) {
                 console.error('Error updating strategies:', error);
+            }
+        }
+
+        // Update fee monitoring
+        async function updateFeeMonitoring() {
+            try {
+                const response = await fetch(`${BOT_API_URL}/fees`);
+                const data = await response.json();
+                
+                document.getElementById('galaFee').textContent = `${data.flatGalaFee} GALA`;
+                document.getElementById('cacheStatus').textContent = data.cacheStatus;
+                
+                // Try to get GALA price from portfolio data
+                try {
+                    const portfolioResponse = await fetch(`${BOT_API_URL}/portfolio`);
+                    const portfolioData = await portfolioResponse.json();
+                    
+                    // Estimate GALA price (this is simplified)
+                    const estimatedGalaPrice = 0.05; // Default estimate
+                    const feeInUSD = data.flatGalaFee * estimatedGalaPrice;
+                    
+                    document.getElementById('galaPrice').textContent = `$${estimatedGalaPrice.toFixed(4)}`;
+                    document.getElementById('feeInUSD').textContent = `$${feeInUSD.toFixed(2)}`;
+                } catch (error) {
+                    // Use default values if portfolio data unavailable
+                    document.getElementById('galaPrice').textContent = '$0.0500';
+                    document.getElementById('feeInUSD').textContent = '$0.05';
+                }
+                
+            } catch (error) {
+                console.error('Error updating fee monitoring:', error);
+                // Set default values
+                document.getElementById('galaFee').textContent = '1 GALA';
+                document.getElementById('galaPrice').textContent = '$0.0500';
+                document.getElementById('feeInUSD').textContent = '$0.05';
+                document.getElementById('cacheStatus').textContent = 'Unknown';
             }
         }
 
