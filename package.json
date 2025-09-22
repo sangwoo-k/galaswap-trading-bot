@@ -9,7 +9,11 @@
     "dev": "ts-node src/index.ts",
     "test": "jest",
     "lint": "eslint src/**/*.ts",
-    "lint:fix": "eslint src/**/*.ts --fix"
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "bot": "node simple-bot.js",
+    "dashboard": "node start-dashboard-only.js",
+    "start-all": "node start-bot-and-dashboard.js",
+    "diversified": "node src/index-diversified.js"
   },
   "keywords": ["trading", "bot", "gala", "swap", "crypto"],
   "author": "",
