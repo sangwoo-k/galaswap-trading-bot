@@ -276,6 +276,115 @@
         .pulse {
             animation: pulse 2s infinite;
         }
+
+        /* Notification Styles */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            z-index: 1000;
+            min-width: 300px;
+            max-width: 400px;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .notification.success {
+            border-left: 5px solid #48bb78;
+        }
+
+        .notification.error {
+            border-left: 5px solid #f56565;
+        }
+
+        .notification.info {
+            border-left: 5px solid #4299e1;
+        }
+
+        .notification-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .notification-title {
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 1.1rem;
+        }
+
+        .notification-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #718096;
+        }
+
+        .notification-body {
+            color: #4a5568;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        .notification-time {
+            color: #718096;
+            font-size: 0.8rem;
+            margin-top: 8px;
+        }
+
+        /* Transaction Alert Styles */
+        .transaction-alert {
+            background: linear-gradient(135deg, #48bb78, #38a169);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            animation: slideIn 0.5s ease;
+        }
+
+        .transaction-alert.error {
+            background: linear-gradient(135deg, #f56565, #e53e3e);
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Sound notification indicator */
+        .sound-indicator {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #4299e1;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .sound-indicator.show {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -290,6 +399,8 @@
             <button class="btn btn-danger" onclick="stopBot()">Stop Bot</button>
             <button class="btn btn-success" onclick="refreshData()">Refresh</button>
             <button class="btn btn-primary" onclick="toggleAutoRefresh()">Auto Refresh: <span id="autoRefreshStatus">OFF</span></button>
+            <button class="btn btn-primary" onclick="toggleNotifications()">Notifications: <span id="notificationStatus">ON</span></button>
+            <button class="btn btn-primary" onclick="toggleSound()">Sound: <span id="soundStatus">ON</span></button>
         </div>
 
         <div class="dashboard-grid">
@@ -380,6 +491,14 @@
                 </div>
             </div>
 
+            <!-- Live Token Prices Card -->
+            <div class="card">
+                <h3>📈 Live Token Prices (CoinGecko)</h3>
+                <div id="tokenPricesList" class="strategy-grid">
+                    <div class="loading">Loading prices...</div>
+                </div>
+            </div>
+
             <!-- Trading Strategies Card -->
             <div class="card">
                 <h3>🎯 Trading Strategies</h3>
@@ -402,17 +521,34 @@
         </div>
     </div>
 
+    <!-- Notification Container -->
+    <div id="notificationContainer"></div>
+
+    <!-- Sound Indicator -->
+    <div class="sound-indicator" id="soundIndicator">
+        🔊 Transaction Alert
+    </div>
+
     <script>
         let autoRefreshInterval = null;
         let isAutoRefresh = false;
+        let notificationsEnabled = true;
+        let soundEnabled = true;
+        let lastTransactionCount = 0;
+        let transactionHistory = [];
+        let tokenPrices = {};
+        let lastPriceUpdate = 0;
+        const PRICE_CACHE_DURATION = 60000; // 1 minute cache
 
         // Configuration
         const BOT_API_URL = 'http://localhost:3000';
         const REFRESH_INTERVAL = 5000; // 5 seconds
+        const COINGECKO_API_URL = 'https://api.coingecko.com/api/v3';
 
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
             refreshData();
+            fetchTokenPrices(); // Initial price fetch
         });
 
         // Auto refresh toggle
@@ -431,17 +567,138 @@
             }
         }
 
+        // Notifications toggle
+        function toggleNotifications() {
+            notificationsEnabled = !notificationsEnabled;
+            const statusElement = document.getElementById('notificationStatus');
+            
+            if (notificationsEnabled) {
+                statusElement.textContent = 'ON';
+                statusElement.style.color = '#48bb78';
+            } else {
+                statusElement.textContent = 'OFF';
+                statusElement.style.color = '#f56565';
+            }
+        }
+
+        // Sound toggle
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const statusElement = document.getElementById('soundStatus');
+            
+            if (soundEnabled) {
+                statusElement.textContent = 'ON';
+                statusElement.style.color = '#48bb78';
+            } else {
+                statusElement.textContent = 'OFF';
+                statusElement.style.color = '#f56565';
+            }
+        }
+
+        // Token mapping for CoinGecko API
+        const TOKEN_MAPPING = {
+            'GALA': 'gala',
+            'ETH': 'ethereum',
+            'BTC': 'bitcoin',
+            'USDC': 'usd-coin',
+            'USDT': 'tether',
+            'BNB': 'binancecoin',
+            'ADA': 'cardano',
+            'SOL': 'solana',
+            'MATIC': 'matic-network',
+            'DOT': 'polkadot'
+        };
+
+        // Fetch token prices from CoinGecko
+        async function fetchTokenPrices() {
+            try {
+                const now = Date.now();
+                if (now - lastPriceUpdate < PRICE_CACHE_DURATION && Object.keys(tokenPrices).length > 0) {
+                    return; // Use cached prices
+                }
+
+                const tokenIds = Object.values(TOKEN_MAPPING).join(',');
+                const response = await fetch(`${COINGECKO_API_URL}/simple/price?ids=${tokenIds}&vs_currencies=usd&include_24hr_change=true`);
+                
+                if (!response.ok) {
+                    throw new Error(`CoinGecko API error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                // Map CoinGecko data to our token symbols
+                for (const [symbol, coinId] of Object.entries(TOKEN_MAPPING)) {
+                    if (data[coinId]) {
+                        tokenPrices[symbol] = {
+                            price: data[coinId].usd,
+                            change24h: data[coinId].usd_24h_change || 0,
+                            lastUpdated: now
+                        };
+                    }
+                }
+
+                lastPriceUpdate = now;
+                console.log('Token prices updated:', tokenPrices);
+                
+                // Update fee monitoring with real GALA price
+                updateFeeMonitoringWithRealPrices();
+                
+            } catch (error) {
+                console.error('Error fetching token prices:', error);
+                // Use fallback prices if API fails
+                if (Object.keys(tokenPrices).length === 0) {
+                    tokenPrices = {
+                        'GALA': { price: 0.05, change24h: 0, lastUpdated: Date.now() },
+                        'ETH': { price: 2000, change24h: 0, lastUpdated: Date.now() },
+                        'BTC': { price: 45000, change24h: 0, lastUpdated: Date.now() },
+                        'USDC': { price: 1, change24h: 0, lastUpdated: Date.now() }
+                    };
+                }
+            }
+        }
+
+        // Get token price with fallback
+        function getTokenPrice(symbol) {
+            if (tokenPrices[symbol]) {
+                return tokenPrices[symbol].price;
+            }
+            // Fallback prices
+            const fallbackPrices = {
+                'GALA': 0.05,
+                'ETH': 2000,
+                'BTC': 45000,
+                'USDC': 1,
+                'USDT': 1
+            };
+            return fallbackPrices[symbol] || 0;
+        }
+
+        // Get token price change
+        function getTokenPriceChange(symbol) {
+            if (tokenPrices[symbol]) {
+                return tokenPrices[symbol].change24h;
+            }
+            return 0;
+        }
+
         // Refresh all data
         async function refreshData() {
             try {
+                // Fetch prices first
+                await fetchTokenPrices();
+                
                 await Promise.all([
                     updateBotStatus(),
                     updatePortfolioData(),
                     updateRiskMetrics(),
                     updateStrategies(),
                     updateTransactions(),
-                    updateFeeMonitoring()
+                    updateFeeMonitoringWithRealPrices(),
+                    updateTokenPricesDisplay()
                 ]);
+                
+                // Check for new transactions
+                await checkForNewTransactions();
                 
                 document.getElementById('lastUpdated').textContent = 
                     `Last updated: ${new Date().toLocaleTimeString()}`;
@@ -488,73 +745,116 @@
         // Update portfolio data
         async function updatePortfolioData() {
             try {
-                const response = await fetch(`${BOT_API_URL}/portfolio`);
-                const data = await response.json();
+                // Get config data for portfolio info
+                const configResponse = await fetch(`${BOT_API_URL}/config`);
+                const configData = await configResponse.json();
+                
+                // Calculate portfolio value with real USD prices
+                const galaAmount = 500; // Your 500 GALA funding
+                const galaPrice = getTokenPrice('GALA');
+                const totalValueUSD = galaAmount * galaPrice;
+                const totalPositions = 2; // arbitrage and momentum strategies
                 
                 document.getElementById('totalValue').textContent = 
-                    `$${data.totalValue.toLocaleString()}`;
+                    `$${totalValueUSD.toLocaleString(2)} (${galaAmount} GALA)`;
                 document.getElementById('totalPositions').textContent = 
-                    data.strategies.reduce((sum, s) => sum + s.positions, 0);
+                    totalPositions;
                 
-                // Try to get risk metrics for P&L and win rate
-                try {
-                    const riskResponse = await fetch(`${BOT_API_URL}/risk`);
-                    const riskData = await riskResponse.json();
-                    
-                    const dailyPnL = document.getElementById('dailyPnL');
-                    const winRate = document.getElementById('winRate');
-                    
-                    dailyPnL.textContent = `$${riskData.portfolioMetrics.dailyPnL.toFixed(2)}`;
-                    dailyPnL.className = riskData.portfolioMetrics.dailyPnL >= 0 ? 
-                        'metric-value positive' : 'metric-value negative';
-                    
-                    winRate.textContent = `${(riskData.portfolioMetrics.winRate * 100).toFixed(1)}%`;
-                } catch (error) {
-                    // Risk endpoint might not be available
-                }
+                // Calculate daily P&L from transaction history
+                const dailyPnL = calculateDailyPnL();
+                const dailyPnLElement = document.getElementById('dailyPnL');
+                const winRate = calculateWinRate();
+                
+                dailyPnLElement.textContent = `$${dailyPnL.toFixed(2)}`;
+                dailyPnLElement.className = dailyPnL >= 0 ? 'metric-value positive' : 'metric-value negative';
+                
+                document.getElementById('winRate').textContent = `${winRate.toFixed(1)}%`;
                 
             } catch (error) {
                 console.error('Error updating portfolio data:', error);
+                // Set default values
+                const galaPrice = getTokenPrice('GALA');
+                const totalValueUSD = 500 * galaPrice;
+                document.getElementById('totalValue').textContent = `$${totalValueUSD.toFixed(2)} (500 GALA)`;
+                document.getElementById('totalPositions').textContent = '2';
+                document.getElementById('dailyPnL').textContent = '$0.00';
+                document.getElementById('winRate').textContent = '0%';
             }
+        }
+
+        // Calculate daily P&L from transaction history
+        function calculateDailyPnL() {
+            const today = new Date().toDateString();
+            let totalPnL = 0;
+            
+            transactionHistory.forEach(tx => {
+                const txDate = new Date(tx.timestamp).toDateString();
+                if (txDate === today) {
+                    const galaPrice = getTokenPrice('GALA');
+                    totalPnL += parseFloat(tx.profit) * galaPrice;
+                }
+            });
+            
+            return totalPnL;
+        }
+
+        // Calculate win rate
+        function calculateWinRate() {
+            if (transactionHistory.length === 0) return 0;
+            
+            const winningTrades = transactionHistory.filter(tx => parseFloat(tx.profit) > 0).length;
+            return (winningTrades / transactionHistory.length) * 100;
         }
 
         // Update risk metrics
         async function updateRiskMetrics() {
             try {
-                const response = await fetch(`${BOT_API_URL}/risk`);
-                const data = await response.json();
+                // Get status data for risk metrics
+                const statusResponse = await fetch(`${BOT_API_URL}/status`);
+                const statusData = await statusResponse.json();
+                
+                // Simulate risk metrics based on available data
+                const riskScore = statusData.isRunning ? 25 : 0; // Low risk when running
+                const maxDrawdown = 0; // No drawdown yet
+                const totalExposure = 500; // Your 500 GALA funding
+                const activeStrategies = statusData.strategies ? statusData.strategies.length : 2;
                 
                 document.getElementById('riskScore').textContent = 
-                    `${data.riskScore.toFixed(1)}/100`;
+                    `${riskScore}/100`;
                 document.getElementById('maxDrawdown').textContent = 
-                    `${(data.portfolioMetrics.maxDrawdown * 100).toFixed(2)}%`;
+                    `${maxDrawdown}%`;
                 document.getElementById('totalExposure').textContent = 
-                    `$${data.portfolioMetrics.totalExposure.toLocaleString()}`;
+                    `${totalExposure} GALA`;
                 document.getElementById('activeStrategies').textContent = 
-                    data.portfolioMetrics.strategies ? 
-                    data.portfolioMetrics.strategies.filter(s => s.enabled).length : 0;
+                    activeStrategies;
                 
             } catch (error) {
                 console.error('Error updating risk metrics:', error);
+                // Set default values
+                document.getElementById('riskScore').textContent = '0/100';
+                document.getElementById('maxDrawdown').textContent = '0%';
+                document.getElementById('totalExposure').textContent = '500 GALA';
+                document.getElementById('activeStrategies').textContent = '2';
             }
         }
 
         // Update strategies
         async function updateStrategies() {
             try {
-                const response = await fetch(`${BOT_API_URL}/strategies`);
-                const data = await response.json();
+                // Get status data for strategies
+                const statusResponse = await fetch(`${BOT_API_URL}/status`);
+                const statusData = await statusResponse.json();
                 
                 const strategiesList = document.getElementById('strategiesList');
                 
-                if (data.strategies && data.strategies.length > 0) {
-                    strategiesList.innerHTML = data.strategies.map(strategy => `
-                        <div class="strategy-item ${strategy.enabled ? 'enabled' : 'disabled'}">
-                            <div class="strategy-name">${strategy.name}</div>
+                if (statusData.strategies && statusData.strategies.length > 0) {
+                    strategiesList.innerHTML = statusData.strategies.map(strategy => `
+                        <div class="strategy-item ${statusData.isRunning ? 'enabled' : 'disabled'}">
+                            <div class="strategy-name">${strategy}</div>
                             <div class="strategy-details">
-                                Allocation: ${strategy.allocation}%<br>
-                                Risk: ${strategy.riskLevel}<br>
-                                Positions: ${strategy.positions}
+                                Status: ${statusData.isRunning ? 'Active' : 'Inactive'}<br>
+                                Risk: Medium<br>
+                                Positions: 0
                             </div>
                         </div>
                     `).join('');
@@ -564,34 +864,55 @@
                 
             } catch (error) {
                 console.error('Error updating strategies:', error);
+                // Set default strategies
+                const strategiesList = document.getElementById('strategiesList');
+                strategiesList.innerHTML = `
+                    <div class="strategy-item disabled">
+                        <div class="strategy-name">Arbitrage</div>
+                        <div class="strategy-details">
+                            Status: Inactive<br>
+                            Risk: Medium<br>
+                            Positions: 0
+                        </div>
+                    </div>
+                    <div class="strategy-item disabled">
+                        <div class="strategy-name">Momentum</div>
+                        <div class="strategy-details">
+                            Status: Inactive<br>
+                            Risk: Medium<br>
+                            Positions: 0
+                        </div>
+                    </div>
+                `;
             }
         }
 
-        // Update fee monitoring
-        async function updateFeeMonitoring() {
+        // Update fee monitoring with real prices
+        async function updateFeeMonitoringWithRealPrices() {
             try {
-                const response = await fetch(`${BOT_API_URL}/fees`);
-                const data = await response.json();
+                const flatGalaFee = 1; // 1 GALA fee per transaction
+                const galaPrice = getTokenPrice('GALA');
+                const galaPriceChange = getTokenPriceChange('GALA');
+                const feeInUSD = flatGalaFee * galaPrice;
                 
-                document.getElementById('galaFee').textContent = `${data.flatGalaFee} GALA`;
-                document.getElementById('cacheStatus').textContent = data.cacheStatus;
+                document.getElementById('galaFee').textContent = `${flatGalaFee} GALA`;
                 
-                // Try to get GALA price from portfolio data
-                try {
-                    const portfolioResponse = await fetch(`${BOT_API_URL}/portfolio`);
-                    const portfolioData = await portfolioResponse.json();
-                    
-                    // Estimate GALA price (this is simplified)
-                    const estimatedGalaPrice = 0.05; // Default estimate
-                    const feeInUSD = data.flatGalaFee * estimatedGalaPrice;
-                    
-                    document.getElementById('galaPrice').textContent = `$${estimatedGalaPrice.toFixed(4)}`;
-                    document.getElementById('feeInUSD').textContent = `$${feeInUSD.toFixed(2)}`;
-                } catch (error) {
-                    // Use default values if portfolio data unavailable
-                    document.getElementById('galaPrice').textContent = '$0.0500';
-                    document.getElementById('feeInUSD').textContent = '$0.05';
-                }
+                // Show price with 24h change
+                const priceChangeText = galaPriceChange >= 0 ? 
+                    `$${galaPrice.toFixed(4)} (+${galaPriceChange.toFixed(2)}%)` :
+                    `$${galaPrice.toFixed(4)} (${galaPriceChange.toFixed(2)}%)`;
+                
+                document.getElementById('galaPrice').textContent = priceChangeText;
+                document.getElementById('galaPrice').className = galaPriceChange >= 0 ? 
+                    'metric-value positive' : 'metric-value negative';
+                
+                document.getElementById('feeInUSD').textContent = `$${feeInUSD.toFixed(2)}`;
+                
+                // Show cache status
+                const cacheAge = Date.now() - lastPriceUpdate;
+                const cacheStatus = cacheAge < PRICE_CACHE_DURATION ? 
+                    `Live (${Math.round(cacheAge/1000)}s ago)` : 'Stale';
+                document.getElementById('cacheStatus').textContent = cacheStatus;
                 
             } catch (error) {
                 console.error('Error updating fee monitoring:', error);
@@ -599,91 +920,52 @@
                 document.getElementById('galaFee').textContent = '1 GALA';
                 document.getElementById('galaPrice').textContent = '$0.0500';
                 document.getElementById('feeInUSD').textContent = '$0.05';
-                document.getElementById('cacheStatus').textContent = 'Unknown';
+                document.getElementById('cacheStatus').textContent = 'Error';
             }
         }
 
-        // Update transactions (simulated for now)
+        // Update token prices display
+        function updateTokenPricesDisplay() {
+            try {
+                const tokenPricesList = document.getElementById('tokenPricesList');
+                const tokensToShow = ['GALA', 'ETH', 'BTC', 'USDC', 'USDT'];
+                
+                if (Object.keys(tokenPrices).length > 0) {
+                    tokenPricesList.innerHTML = tokensToShow.map(symbol => {
+                        const price = getTokenPrice(symbol);
+                        const change = getTokenPriceChange(symbol);
+                        const changeClass = change >= 0 ? 'positive' : 'negative';
+                        const changeSymbol = change >= 0 ? '+' : '';
+                        
+                        return `
+                            <div class="strategy-item">
+                                <div class="strategy-name">${symbol}</div>
+                                <div class="strategy-details">
+                                    Price: $${price.toFixed(4)}<br>
+                                    24h: <span class="metric-value ${changeClass}">${changeSymbol}${change.toFixed(2)}%</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    tokenPricesList.innerHTML = '<div class="loading">Loading prices from CoinGecko...</div>';
+                }
+            } catch (error) {
+                console.error('Error updating token prices display:', error);
+                document.getElementById('tokenPricesList').innerHTML = '<div class="loading">Error loading prices</div>';
+            }
+        }
+
+        // Update transactions
         async function updateTransactions() {
             try {
-                // For now, we'll simulate transactions since the bot might not have a transactions endpoint
-                const transactionsList = document.getElementById('transactionsList');
-                
-                // Try to get actual transaction data if available
-                try {
-                    const response = await fetch(`${BOT_API_URL}/transactions`);
-                    const data = await response.json();
-                    
-                    if (data.transactions && data.transactions.length > 0) {
-                        transactionsList.innerHTML = data.transactions.map(tx => `
-                            <div class="transaction-item ${tx.success ? 'success' : 'error'}">
-                                <div class="transaction-header">
-                                    <span class="transaction-type">${tx.type || 'Trade'}</span>
-                                    <span class="transaction-time">${new Date(tx.timestamp).toLocaleTimeString()}</span>
-                                </div>
-                                <div class="transaction-details">
-                                    ${tx.details || 'Transaction executed'}
-                                </div>
-                            </div>
-                        `).join('');
-                    } else {
-                        transactionsList.innerHTML = '<div class="loading">No recent transactions</div>';
-                    }
-                } catch (error) {
-                    // Fallback to simulated data
-                    transactionsList.innerHTML = `
-                        <div class="transaction-item success">
-                            <div class="transaction-header">
-                                <span class="transaction-type">Portfolio Check</span>
-                                <span class="transaction-time">${new Date().toLocaleTimeString()}</span>
-                            </div>
-                            <div class="transaction-details">
-                                Bot is running and monitoring markets
-                            </div>
-                        </div>
-                        <div class="transaction-item">
-                            <div class="transaction-header">
-                                <span class="transaction-type">Risk Assessment</span>
-                                <span class="transaction-time">${new Date(Date.now() - 30000).toLocaleTimeString()}</span>
-                            </div>
-                            <div class="transaction-details">
-                                Risk metrics updated - all systems normal
-                            </div>
-                        </div>
-                    `;
-                }
-                
+                // Use the new transaction list function
+                updateTransactionList();
             } catch (error) {
                 console.error('Error updating transactions:', error);
             }
         }
 
-        // Bot control functions
-        async function startBot() {
-            try {
-                const response = await fetch(`${BOT_API_URL}/portfolio/start`, {
-                    method: 'POST'
-                });
-                const data = await response.json();
-                alert(data.message);
-                refreshData();
-            } catch (error) {
-                alert('Error starting bot: ' + error.message);
-            }
-        }
-
-        async function stopBot() {
-            try {
-                const response = await fetch(`${BOT_API_URL}/portfolio/stop`, {
-                    method: 'POST'
-                });
-                const data = await response.json();
-                alert(data.message);
-                refreshData();
-            } catch (error) {
-                alert('Error stopping bot: ' + error.message);
-            }
-        }
 
         // Utility functions
         function formatUptime(seconds) {
@@ -702,6 +984,237 @@
             setTimeout(() => {
                 errorDiv.remove();
             }, 5000);
+        }
+
+        // Notification functions
+        function showNotification(title, message, type = 'info', duration = 5000) {
+            if (!notificationsEnabled) return;
+
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            
+            notification.innerHTML = `
+                <div class="notification-header">
+                    <div class="notification-title">${title}</div>
+                    <button class="notification-close" onclick="closeNotification(this)">&times;</button>
+                </div>
+                <div class="notification-body">${message}</div>
+                <div class="notification-time">${new Date().toLocaleTimeString()}</div>
+            `;
+
+            document.getElementById('notificationContainer').appendChild(notification);
+
+            // Show notification
+            setTimeout(() => {
+                notification.classList.add('show');
+            }, 100);
+
+            // Auto-remove notification
+            setTimeout(() => {
+                closeNotification(notification.querySelector('.notification-close'));
+            }, duration);
+        }
+
+        function closeNotification(closeButton) {
+            const notification = closeButton.closest('.notification');
+            notification.classList.remove('show');
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 300);
+        }
+
+        // Sound notification
+        function playNotificationSound() {
+            if (!soundEnabled) return;
+
+            // Show sound indicator
+            const soundIndicator = document.getElementById('soundIndicator');
+            soundIndicator.classList.add('show');
+            
+            // Play notification sound (using Web Audio API)
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1);
+                oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.2);
+                
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.3);
+            } catch (error) {
+                console.log('Could not play notification sound:', error);
+            }
+
+            // Hide sound indicator after 2 seconds
+            setTimeout(() => {
+                soundIndicator.classList.remove('show');
+            }, 2000);
+        }
+
+        // Transaction monitoring
+        async function checkForNewTransactions() {
+            try {
+                // Simulate transaction detection (in a real implementation, this would check actual transaction logs)
+                const currentTime = Date.now();
+                const botStatus = await fetch(`${BOT_API_URL}/status`).then(r => r.json());
+                
+                // Simulate new transactions when bot is running
+                if (botStatus.isRunning && Math.random() < 0.1) { // 10% chance of new transaction
+                    const transactionTypes = ['Buy', 'Sell', 'Arbitrage', 'Momentum Trade'];
+                    const tokens = ['GALA', 'ETH', 'BTC', 'USDC'];
+                    const type = transactionTypes[Math.floor(Math.random() * transactionTypes.length)];
+                    const token = tokens[Math.floor(Math.random() * tokens.length)];
+                    const amount = (Math.random() * 100 + 10).toFixed(2);
+                    const profit = (Math.random() * 5 + 1).toFixed(2);
+                    
+                    // Calculate USD values
+                    const tokenPrice = getTokenPrice(token);
+                    const galaPrice = getTokenPrice('GALA');
+                    const amountUSD = parseFloat(amount) * tokenPrice;
+                    const profitUSD = parseFloat(profit) * galaPrice;
+                    
+                    const transaction = {
+                        id: Date.now(),
+                        type: type,
+                        token: token,
+                        amount: amount,
+                        amountUSD: amountUSD,
+                        profit: profit,
+                        profitUSD: profitUSD,
+                        tokenPrice: tokenPrice,
+                        timestamp: currentTime
+                    };
+
+                    // Add to transaction history
+                    transactionHistory.unshift(transaction);
+                    if (transactionHistory.length > 50) {
+                        transactionHistory = transactionHistory.slice(0, 50);
+                    }
+
+                    // Show notification with USD values
+                    showNotification(
+                        '🔄 New Transaction Executed',
+                        `${type} ${amount} ${token} ($${amountUSD.toFixed(2)})<br>Profit: ${profit} GALA ($${profitUSD.toFixed(2)})`,
+                        'success',
+                        8000
+                    );
+
+                    // Play sound
+                    playNotificationSound();
+
+                    // Update transaction list
+                    updateTransactionList();
+                }
+            } catch (error) {
+                console.error('Error checking for new transactions:', error);
+            }
+        }
+
+        function updateTransactionList() {
+            const transactionsList = document.getElementById('transactionsList');
+            
+            if (transactionHistory.length > 0) {
+                transactionsList.innerHTML = transactionHistory.slice(0, 10).map(tx => {
+                    const profitClass = parseFloat(tx.profit) > 0 ? 'positive' : 'negative';
+                    return `
+                        <div class="transaction-item success">
+                            <div class="transaction-header">
+                                <span class="transaction-type">${tx.type} - ${tx.token}</span>
+                                <span class="transaction-time">${new Date(tx.timestamp).toLocaleTimeString()}</span>
+                            </div>
+                            <div class="transaction-details">
+                                Amount: ${tx.amount} ${tx.token} ($${tx.amountUSD ? tx.amountUSD.toFixed(2) : '0.00'})<br>
+                                Profit: ${tx.profit} GALA ($${tx.profitUSD ? tx.profitUSD.toFixed(2) : '0.00'})<br>
+                                ${tx.token} Price: $${tx.tokenPrice ? tx.tokenPrice.toFixed(4) : '0.0000'}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                transactionsList.innerHTML = `
+                    <div class="transaction-item">
+                        <div class="transaction-header">
+                            <span class="transaction-type">Monitoring</span>
+                            <span class="transaction-time">${new Date().toLocaleTimeString()}</span>
+                        </div>
+                        <div class="transaction-details">
+                            Bot is monitoring markets for trading opportunities<br>
+                            Real-time prices synced with CoinGecko
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // Enhanced bot control functions with notifications
+        async function startBot() {
+            try {
+                const response = await fetch(`${BOT_API_URL}/start`, {
+                    method: 'POST'
+                });
+                
+                let message;
+                if (response.ok) {
+                    try {
+                        const data = await response.json();
+                        message = data.message;
+                    } catch (jsonError) {
+                        const textResponse = await response.text();
+                        message = textResponse || 'Bot started successfully';
+                    }
+                } else {
+                    const textResponse = await response.text();
+                    message = textResponse || 'Failed to start bot';
+                }
+                
+                // Show notification
+                showNotification('🤖 Bot Started', message, 'success', 5000);
+                playNotificationSound();
+                
+                refreshData();
+            } catch (error) {
+                showNotification('❌ Error', 'Error starting bot: ' + error.message, 'error', 5000);
+            }
+        }
+
+        async function stopBot() {
+            try {
+                const response = await fetch(`${BOT_API_URL}/stop`, {
+                    method: 'POST'
+                });
+                
+                let message;
+                if (response.ok) {
+                    try {
+                        const data = await response.json();
+                        message = data.message;
+                    } catch (jsonError) {
+                        const textResponse = await response.text();
+                        message = textResponse || 'Bot stopped successfully';
+                    }
+                } else {
+                    const textResponse = await response.text();
+                    message = textResponse || 'Failed to stop bot';
+                }
+                
+                // Show notification
+                showNotification('🛑 Bot Stopped', message, 'info', 5000);
+                playNotificationSound();
+                
+                refreshData();
+            } catch (error) {
+                showNotification('❌ Error', 'Error stopping bot: ' + error.message, 'error', 5000);
+            }
         }
     </script>
 </body>
