@@ -655,9 +655,58 @@
         const REFRESH_INTERVAL = 5000; // 5 seconds
         const COINGECKO_API_URL = 'https://api.coingecko.com/api/v3';
 
+        // Load current risk score from bot
+        async function loadCurrentRiskScore() {
+            try {
+                const response = await fetch(`${BOT_API_URL}/risk/current`);
+                if (response.ok) {
+                    const riskData = await response.json();
+                    document.getElementById('riskSlider').value = riskData.riskScore;
+                    document.getElementById('currentRiskScore').textContent = riskData.riskScore;
+                    
+                    // Update impact description without sending to bot
+                    updateRiskImpactDescription(riskData.riskScore);
+                }
+            } catch (error) {
+                console.error('Error loading current risk score:', error);
+            }
+        }
+
+        // Update risk impact description without API call
+        function updateRiskImpactDescription(value) {
+            const impactList = document.querySelector('.risk-impact ul');
+            let impactItems = [];
+            
+            if (value <= 30) {
+                impactItems = [
+                    '✅ Conservative trading approach',
+                    '✅ Lower position sizes (0.5x)',
+                    '✅ Higher profit margins required',
+                    '⚠️ Fewer trading opportunities (60s intervals)'
+                ];
+            } else if (value <= 60) {
+                impactItems = [
+                    '✅ More frequent trading opportunities',
+                    '✅ Better capital utilization (1.0x positions)',
+                    '⚠️ Moderate position sizes',
+                    '⚠️ Balanced risk/reward (30s intervals)'
+                ];
+            } else {
+                impactItems = [
+                    '✅ Maximum trading frequency',
+                    '✅ Aggressive capital deployment (1.5x positions)',
+                    '⚠️ Higher position sizes',
+                    '⚠️ Increased market exposure (15s intervals)'
+                ];
+            }
+            
+            impactList.innerHTML = impactItems.map(item => `<li>${item}</li>`).join('');
+        }
+
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
             refreshData();
+            loadCurrentRiskScore();
             fetchTokenPrices(); // Initial price fetch
         });
 
@@ -923,8 +972,18 @@
                 const statusResponse = await fetch(`${BOT_API_URL}/status`);
                 const statusData = await statusResponse.json();
                 
-                // Simulate risk metrics based on available data
-                const riskScore = statusData.isRunning ? 50 : 0; // Moderate risk when running
+                // Get actual risk score from bot
+                let riskScore = 0;
+                try {
+                    const riskResponse = await fetch(`${BOT_API_URL}/risk/current`);
+                    if (riskResponse.ok) {
+                        const riskData = await riskResponse.json();
+                        riskScore = riskData.riskScore;
+                    }
+                } catch (error) {
+                    console.error('Error fetching risk data:', error);
+                    riskScore = statusData.isRunning ? 50 : 0; // Fallback
+                }
                 const maxDrawdown = 0; // No drawdown yet
                 const totalExposure = 2000; // Your 2000 GALA funding
                 const activeStrategies = statusData.strategies ? statusData.strategies.length : 2;
@@ -1326,8 +1385,8 @@
             updateTransactionList();
         }
 
-        // Update risk score dynamically
-        function updateRiskScore(value) {
+        // Update risk score dynamically and send to bot
+        async function updateRiskScore(value) {
             document.getElementById('currentRiskScore').textContent = value;
             
             // Update risk impact description based on score
@@ -1337,30 +1396,54 @@
             if (value <= 30) {
                 impactItems = [
                     '✅ Conservative trading approach',
-                    '✅ Lower position sizes',
+                    '✅ Lower position sizes (0.5x)',
                     '✅ Higher profit margins required',
-                    '⚠️ Fewer trading opportunities'
+                    '⚠️ Fewer trading opportunities (60s intervals)'
                 ];
             } else if (value <= 60) {
                 impactItems = [
                     '✅ More frequent trading opportunities',
-                    '✅ Better capital utilization',
+                    '✅ Better capital utilization (1.0x positions)',
                     '⚠️ Moderate position sizes',
-                    '⚠️ Balanced risk/reward'
+                    '⚠️ Balanced risk/reward (30s intervals)'
                 ];
             } else {
                 impactItems = [
                     '✅ Maximum trading frequency',
-                    '✅ Aggressive capital deployment',
+                    '✅ Aggressive capital deployment (1.5x positions)',
                     '⚠️ Higher position sizes',
-                    '⚠️ Increased market exposure'
+                    '⚠️ Increased market exposure (15s intervals)'
                 ];
             }
             
             impactList.innerHTML = impactItems.map(item => `<li>${item}</li>`).join('');
             
-            // Show notification about risk change
-            showNotification('Risk Score Updated', `Risk level set to ${value}/100`, 'info');
+            // Send risk score to bot API
+            try {
+                const response = await fetch(`${BOT_API_URL}/risk/update`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ riskScore: parseInt(value) })
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    showNotification('Risk Score Updated', `Bot risk level set to ${value}/100<br>Trading frequency: ${result.tradingFrequency/1000}s<br>Position multiplier: ${result.positionSizeMultiplier}x`, 'success', 6000);
+                    
+                    // Update bot status display
+                    setTimeout(() => {
+                        refreshData();
+                    }, 1000);
+                } else {
+                    const error = await response.json();
+                    showNotification('Risk Update Failed', error.error || 'Failed to update risk score', 'error');
+                }
+            } catch (error) {
+                console.error('Error updating risk score:', error);
+                showNotification('Risk Update Failed', 'Could not connect to bot API', 'error');
+            }
         }
 
         // Enhanced bot control functions with notifications

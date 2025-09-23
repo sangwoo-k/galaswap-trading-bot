@@ -31,6 +31,9 @@ class SimpleTradingBot {
   constructor() {
     this.app = express();
     this.isRunning = false;
+    this.riskScore = 50; // Default risk score
+    this.tradingFrequency = 30000; // 30 seconds default
+    this.positionSizeMultiplier = 1.0; // Default position size
     this.setupMiddleware();
     this.setupRoutes();
   }
@@ -96,7 +99,49 @@ class SimpleTradingBot {
         maxTradeAmount: process.env.MAX_TRADE_AMOUNT || '1000',
         stopLossPercentage: process.env.STOP_LOSS_PERCENTAGE || '5',
         takeProfitPercentage: process.env.TAKE_PROFIT_PERCENTAGE || '10',
-        nodeEnv: process.env.NODE_ENV || 'development'
+        nodeEnv: process.env.NODE_ENV || 'development',
+        riskScore: this.riskScore,
+        tradingFrequency: this.tradingFrequency,
+        positionSizeMultiplier: this.positionSizeMultiplier
+      });
+    });
+
+    // Update risk score
+    this.app.post('/risk/update', (req, res) => {
+      const { riskScore } = req.body;
+      
+      if (typeof riskScore !== 'number' || riskScore < 10 || riskScore > 80) {
+        return res.status(400).json({ 
+          error: 'Risk score must be a number between 10 and 80' 
+        });
+      }
+      
+      this.riskScore = riskScore;
+      
+      // Update trading parameters based on risk score
+      this.updateTradingParameters();
+      
+      logger.info(`Risk score updated to ${riskScore}`, { 
+        riskScore, 
+        tradingFrequency: this.tradingFrequency,
+        positionSizeMultiplier: this.positionSizeMultiplier 
+      });
+      
+      res.json({ 
+        message: 'Risk score updated successfully',
+        riskScore: this.riskScore,
+        tradingFrequency: this.tradingFrequency,
+        positionSizeMultiplier: this.positionSizeMultiplier
+      });
+    });
+
+    // Get current risk settings
+    this.app.get('/risk/current', (req, res) => {
+      res.json({
+        riskScore: this.riskScore,
+        tradingFrequency: this.tradingFrequency,
+        positionSizeMultiplier: this.positionSizeMultiplier,
+        isRunning: this.isRunning
       });
     });
 
@@ -106,22 +151,69 @@ class SimpleTradingBot {
     });
   }
 
+  updateTradingParameters() {
+    // Update trading frequency based on risk score
+    if (this.riskScore <= 30) {
+      // Conservative: slower trading
+      this.tradingFrequency = 60000; // 1 minute
+      this.positionSizeMultiplier = 0.5; // Smaller positions
+    } else if (this.riskScore <= 60) {
+      // Moderate: balanced trading
+      this.tradingFrequency = 30000; // 30 seconds
+      this.positionSizeMultiplier = 1.0; // Normal positions
+    } else {
+      // Aggressive: faster trading
+      this.tradingFrequency = 15000; // 15 seconds
+      this.positionSizeMultiplier = 1.5; // Larger positions
+    }
+    
+    // Restart trading interval if bot is running
+    if (this.isRunning && this.tradingInterval) {
+      clearInterval(this.tradingInterval);
+      this.tradingInterval = setInterval(() => {
+        if (this.isRunning) {
+          this.executeTradingCycle();
+        }
+      }, this.tradingFrequency);
+    }
+  }
+
+  executeTradingCycle() {
+    // Simulate trading decision based on risk score
+    const shouldTrade = Math.random() < (this.riskScore / 100);
+    
+    if (shouldTrade) {
+      const positionSize = 100 * this.positionSizeMultiplier;
+      logger.info('Trading opportunity detected', { 
+        riskScore: this.riskScore,
+        positionSize: positionSize,
+        tradingFrequency: this.tradingFrequency,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      logger.info('Trading bot is active - monitoring markets', { 
+        riskScore: this.riskScore,
+        status: 'monitoring',
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
   start() {
     this.isRunning = true;
     logger.info('Trading bot started', {
       timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV || 'development'
+      environment: process.env.NODE_ENV || 'development',
+      riskScore: this.riskScore,
+      tradingFrequency: this.tradingFrequency
     });
 
-    // Simulate trading activity (in a real bot, this would be actual trading logic)
+    // Start trading cycle with current risk settings
     this.tradingInterval = setInterval(() => {
       if (this.isRunning) {
-        logger.info('Trading bot is active', {
-          timestamp: new Date().toISOString(),
-          status: 'running'
-        });
+        this.executeTradingCycle();
       }
-    }, 30000); // Log every 30 seconds
+    }, this.tradingFrequency);
   }
 
   stop() {
