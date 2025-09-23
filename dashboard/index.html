@@ -751,7 +751,7 @@
                 const configData = await configResponse.json();
                 
                 // Calculate portfolio value with real USD prices
-                const galaAmount = 500; // Your 500 GALA funding
+                const galaAmount = 2000; // Your 2000 GALA funding (500 + 1500)
                 const galaPrice = getTokenPrice('GALA');
                 const totalValueUSD = galaAmount * galaPrice;
                 const totalPositions = 2; // arbitrage and momentum strategies
@@ -775,8 +775,8 @@
                 console.error('Error updating portfolio data:', error);
                 // Set default values
                 const galaPrice = getTokenPrice('GALA');
-                const totalValueUSD = 500 * galaPrice;
-                document.getElementById('totalValue').textContent = `$${totalValueUSD.toFixed(2)} (500 GALA)`;
+                const totalValueUSD = 2000 * galaPrice;
+                document.getElementById('totalValue').textContent = `$${totalValueUSD.toFixed(2)} (2000 GALA)`;
                 document.getElementById('totalPositions').textContent = '2';
                 document.getElementById('dailyPnL').textContent = '$0.00';
                 document.getElementById('winRate').textContent = '0%';
@@ -817,7 +817,7 @@
                 // Simulate risk metrics based on available data
                 const riskScore = statusData.isRunning ? 25 : 0; // Low risk when running
                 const maxDrawdown = 0; // No drawdown yet
-                const totalExposure = 500; // Your 500 GALA funding
+                const totalExposure = 2000; // Your 2000 GALA funding
                 const activeStrategies = statusData.strategies ? statusData.strategies.length : 2;
                 
                 document.getElementById('riskScore').textContent = 
@@ -834,7 +834,7 @@
                 // Set default values
                 document.getElementById('riskScore').textContent = '0/100';
                 document.getElementById('maxDrawdown').textContent = '0%';
-                document.getElementById('totalExposure').textContent = '500 GALA';
+                document.getElementById('totalExposure').textContent = '2000 GALA';
                 document.getElementById('activeStrategies').textContent = '2';
             }
         }
