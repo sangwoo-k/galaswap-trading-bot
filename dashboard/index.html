@@ -385,6 +385,92 @@
         .sound-indicator.show {
             opacity: 1;
         }
+
+        /* Risk Control Panel Styles */
+        .risk-control-panel {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border-left: 4px solid #FF9800;
+        }
+
+        .risk-control-panel h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 18px;
+        }
+
+        .risk-slider-container {
+            margin-bottom: 20px;
+        }
+
+        .risk-slider-container label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        #riskSlider {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            background: #ddd;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        #riskSlider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #FF9800;
+            cursor: pointer;
+        }
+
+        #riskSlider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #FF9800;
+            cursor: pointer;
+            border: none;
+        }
+
+        .risk-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .risk-impact {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 3px solid #28a745;
+        }
+
+        .risk-impact p {
+            margin: 0 0 10px 0;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .risk-impact ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        .risk-impact li {
+            margin-bottom: 5px;
+            color: #555;
+        }
     </style>
 </head>
 <body>
@@ -401,8 +487,31 @@
             <button class="btn btn-primary" onclick="toggleAutoRefresh()">Auto Refresh: <span id="autoRefreshStatus">OFF</span></button>
             <button class="btn btn-primary" onclick="toggleNotifications()">Notifications: <span id="notificationStatus">ON</span></button>
             <button class="btn btn-primary" onclick="toggleSound()">Sound: <span id="soundStatus">ON</span></button>
-            <button class="btn btn-success" onclick="simulateRealTransaction()">Test Real Transaction</button>
-        </div>
+                <button class="btn btn-success" onclick="simulateRealTransaction()">Test Real Transaction</button>
+            </div>
+            
+            <!-- Risk Control Panel -->
+            <div class="risk-control-panel">
+                <h3>🎯 Risk Control</h3>
+                <div class="risk-slider-container">
+                    <label for="riskSlider">Risk Score: <span id="currentRiskScore">50</span>/100</label>
+                    <input type="range" id="riskSlider" min="10" max="80" value="50" oninput="updateRiskScore(this.value)">
+                    <div class="risk-labels">
+                        <span>Conservative (10-30)</span>
+                        <span>Moderate (40-60)</span>
+                        <span>Aggressive (70-80)</span>
+                    </div>
+                </div>
+                <div class="risk-impact">
+                    <p><strong>Current Impact:</strong></p>
+                    <ul>
+                        <li>✅ More frequent trading opportunities</li>
+                        <li>✅ Better capital utilization</li>
+                        <li>⚠️ Higher position sizes</li>
+                        <li>⚠️ More market exposure</li>
+                    </ul>
+                </div>
+            </div>
 
         <div class="dashboard-grid">
             <!-- Bot Status Card -->
@@ -815,7 +924,7 @@
                 const statusData = await statusResponse.json();
                 
                 // Simulate risk metrics based on available data
-                const riskScore = statusData.isRunning ? 25 : 0; // Low risk when running
+                const riskScore = statusData.isRunning ? 50 : 0; // Moderate risk when running
                 const maxDrawdown = 0; // No drawdown yet
                 const totalExposure = 2000; // Your 2000 GALA funding
                 const activeStrategies = statusData.strategies ? statusData.strategies.length : 2;
@@ -1215,6 +1324,43 @@
 
             // Update transaction list
             updateTransactionList();
+        }
+
+        // Update risk score dynamically
+        function updateRiskScore(value) {
+            document.getElementById('currentRiskScore').textContent = value;
+            
+            // Update risk impact description based on score
+            const impactList = document.querySelector('.risk-impact ul');
+            let impactItems = [];
+            
+            if (value <= 30) {
+                impactItems = [
+                    '✅ Conservative trading approach',
+                    '✅ Lower position sizes',
+                    '✅ Higher profit margins required',
+                    '⚠️ Fewer trading opportunities'
+                ];
+            } else if (value <= 60) {
+                impactItems = [
+                    '✅ More frequent trading opportunities',
+                    '✅ Better capital utilization',
+                    '⚠️ Moderate position sizes',
+                    '⚠️ Balanced risk/reward'
+                ];
+            } else {
+                impactItems = [
+                    '✅ Maximum trading frequency',
+                    '✅ Aggressive capital deployment',
+                    '⚠️ Higher position sizes',
+                    '⚠️ Increased market exposure'
+                ];
+            }
+            
+            impactList.innerHTML = impactItems.map(item => `<li>${item}</li>`).join('');
+            
+            // Show notification about risk change
+            showNotification('Risk Score Updated', `Risk level set to ${value}/100`, 'info');
         }
 
         // Enhanced bot control functions with notifications
